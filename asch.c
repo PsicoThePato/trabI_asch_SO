@@ -15,9 +15,10 @@ void trata_sinal(int sinal)
         break;
     case SIGQUIT:
         caractere_chamada = '\\';
-        printf("aaa");
+        break;
     case SIGTSTP:
         caractere_chamada = 'Z';
+        break;  
     default:
         printf("%d", sinal);
         break;
