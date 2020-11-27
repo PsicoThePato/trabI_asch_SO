@@ -74,29 +74,18 @@ int trata_comando_background(char *comando)
     // List* parsed_command;
     // if(newList(parsed_commands_list, sizeof(List*), NULL))
     // if(newList(parsed_command, sizeof(char*), NULL))
+    
+    char** commands;
     char *end_str;
     command_token = strtok_r(comando, delimiter, &end_str);
-    while (command_token != NULL)
+    for(int i = 0; command_token != NULL; i++)
     {   
-
-        int argv_len = 0;
-        char *end_token;
-        argv_token = strtok_r(command_token, " ", &end_token);    
-        while(argv_token != NULL)
-        {
-            
-            argv[argv_len] = malloc(sizeof(char) * strlen(argv_token));
-            strcpy(argv[argv_len], argv_token);
-            argv_len++;
-            argv_token = strtok_r(NULL, " ", &end_token);
-        }
-        
-        char nome_arquivo[strlen(argv[0]) + 3];
-        strcpy(nome_arquivo, "./"); strcat(nome_arquivo, argv[0]);
-        argv[argv_len] = NULL;
-        if(execvp(nome_arquivo, argv) < 0) perror("erro");
+        commands = realloc(commands, sizeof(char*) * i+1);
+        commands[i] = strdup(command_token);
+        printf("INFO ---- %s\n", commands[i]);
         command_token = strtok_r(NULL, delimiter, &end_str);
     }
+    
 
 }
 
@@ -118,19 +107,21 @@ int main()
     char comando_cpy[1000];
     fgets(comando, 1000, stdin);
     strcpy(comando_cpy, comando);
-    int background_flag = trata_comando_foreground(comando);
+    // int background_flag = trata_comando_foreground(comando);
 
-    if (background_flag)
-        pid_gerenciador = fork();
+    // if (background_flag)
+    //     pid_gerenciador = fork();
     
-    if (pid_gerenciador == 0)
-    {   
-        setsid();
-        trata_comando_background(comando_cpy);
-    }
+    // if (pid_gerenciador == 0)
+    // {   
+    //     //setsid();
+    //     trata_comando_background(comando_cpy);
+    // }
 
-    if (pid_gerenciador > 0)
-    {
-        waitpid(pid_gerenciador, NULL, WNOHANG);
-    }
+    // if (pid_gerenciador > 0)
+    // {
+    //     waitpid(pid_gerenciador, NULL, WNOHANG);
+    // }
+
+    trata_comando_background(comando_cpy);
 }
