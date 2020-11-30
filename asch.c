@@ -185,14 +185,14 @@ int trata_comando_foreground(char **comando, int n_commands)
 
         }
 
-        else
+        else // comando não termina em '%'
         {
             printf("será tratado em background\n");
             return 1;
         }
     }
     
-    else
+    else // mais de um comando
     {
         printf("será tratado em background\n");
         return 1;
@@ -204,8 +204,17 @@ int trata_comando_background(char **commands, int n_comandos)
 {
     printf("running backgroud pid: %d\n", getpid());
     
-    char* argv[5];
+    if(n_comandos == 1)
+    {
+        struct sigaction ignora = {.sa_handler = SIG_IGN};
+        sigemptyset(&ignora.sa_mask);
+        sigaction(SIGUSR1, &ignora, NULL);
+    }
+    kill(getpid(), SIGUSR1);
+    printf("sou imorrível\n");
+    char* argv[6];
     int argc = 0;
+    pid_t pid;
     for(int i = 0; i < n_comandos; i++)
     {
 
@@ -215,13 +224,13 @@ int trata_comando_background(char **commands, int n_comandos)
             printf("background : ARGV: %s\n", argv[k]);
         }
         printf("INFO --- ARGC: %d\n", argc); 
-        argv[argc] = NULL;
-        pid_t pid = fork();
+        argv[argc] = "&";
+        argv[argc+1] = NULL;
+        pid = fork();
         if(pid == 0) execvp(argv[0], argv);
         
         else
         {
-            waitpid(pid, NULL, WNOHANG);
             for(int j = 0; j < argc; j++)
             {
                 free(argv[j]);
@@ -229,10 +238,21 @@ int trata_comando_background(char **commands, int n_comandos)
             
         }
         
-    }    
-    pid_t wpid;
-    while ((wpid = wait(NULL)) > 0);
-
+    }
+    //kill(pid, SIGUSR1);
+    //Previne corona de se espalhar. Você não tem uma pandemia se todo mundo está morto.
+    if(pid > 0)
+    {
+        int status;
+        while(wait(&status) > 0)
+        {
+            if(status == SIGUSR1)
+            {
+                kill(-1*getpid(), SIGKILL);
+            }
+        }
+        kill(getpid(), SIGKILL);
+    }
 
 }
 
