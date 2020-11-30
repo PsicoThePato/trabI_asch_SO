@@ -13,29 +13,39 @@
 
 
 List* GPID_LIST;
+int FG_PROCESS_FLAG = 0;
+pid_t FG_PROCESS_PID;
 
 
 void trata_sinal(int sinal)
 {
-    char caractere_chamada;
-    switch (sinal)
+    if(FG_PROCESS_FLAG)
     {
-    case SIGINT:
-        caractere_chamada = 'C';
-        break;
-    case SIGQUIT:
-        caractere_chamada = '\\';
-        break;
-    case SIGTSTP:
-        caractere_chamada = 'Z';
-        break;
-    default:
-        printf("%d", sinal);
-        break;
+        kill(FG_PROCESS_FLAG, SIGKILL);
     }
+    else
+    {
+        char caractere_chamada;
+        switch (sinal)
+        {
+        case SIGINT:
+            caractere_chamada = 'C';
+            break;
+        case SIGQUIT:
+            caractere_chamada = '\\';
+            break;
+        case SIGTSTP:
+            caractere_chamada = 'Z';
+            break;
+        default:
+            printf("%d", sinal);
+            break;
+        }
 
-    printf("\nNão adianta me enviar o sinal por Ctrl-%c. Estou vacinado!!\n", caractere_chamada);
+        printf("\nNão adianta me enviar o sinal por Ctrl-%c. Estou vacinado!!\n", caractere_chamada);
+    }
 }
+
 
 int muda_diretorio(char *path)
 {
@@ -69,8 +79,13 @@ int cria_vetor_comandos(char *comando, char**commands)
 
 int get_tokenized_command(char **commands)
 {
-    char comando[1000];
+    char comando[1000] = {'\0'};
     fgets(comando, 1000, stdin);
+    if(strlen(comando) == 0)
+    {
+        printf("Problema na leitura do comando, tente de novo!\n");
+        return -1;
+    }
     for (char* p = comando; *p != '\0'; p++)
     {
         if (*p == '\n') 
@@ -78,10 +93,16 @@ int get_tokenized_command(char **commands)
             *p = '\0';
             break;
         }
+        if(*p == '\0')
+        {
+            printf("Problema na leitura do comando, tente de novo!\n");
+            return -1;
+        }
     }
     int n_comandos = cria_vetor_comandos(comando, commands);
     return n_comandos;
 }
+
 
 int cria_argv(char *comando, char** argv)
 {
@@ -100,8 +121,11 @@ int cria_argv(char *comando, char** argv)
 
 int trata_comando_foreground(char **comando, int n_commands)
 {
-    printf("running foreground\n");
-
+    printf("running foreground pid: %d\n", getpid());
+    if(n_commands < 0)
+    {
+        return 0;
+    }
     if(n_commands == 1)
     {
         printf("INFO ---- comando unitário\n");
@@ -128,7 +152,7 @@ int trata_comando_foreground(char **comando, int n_commands)
                 node = node->next;
             }
             destroyList(GPID_LIST);
-            printf("DESTRUÍ A LISTA BUUM\n");
+            printf("DESTRUÍ A LISTA E TENHO O PID %d\n", getpid());
             kill(getpid(), SIGKILL);
             printf("deu ruim no exit\n");
         }
@@ -141,21 +165,33 @@ int trata_comando_foreground(char **comando, int n_commands)
             pid_t pid = fork();
             if(pid == 0)
             {
-            execvp(argv[0], argv);
+                execvp(argv[0], argv);
+                perror("Deu ruim!");
+                return 0; // failsafe
             }
             else
             {
+                FG_PROCESS_PID = pid;
+                FG_PROCESS_FLAG = 1;
                 waitpid(pid, NULL, 0);
+                FG_PROCESS_FLAG = 0;
                 for(int i = 0; i < argc; i++)
                 {
                     free(argv[i]);
                 }
                 printf("POC\n");
+                return 0;
             }
 
-            return 0;
+        }
+
+        else
+        {
+            printf("será tratado em background\n");
+            return 1;
         }
     }
+    
     else
     {
         printf("será tratado em background\n");
@@ -163,9 +199,10 @@ int trata_comando_foreground(char **comando, int n_commands)
     }
 }
 
+
 int trata_comando_background(char **commands, int n_comandos)
 {
-    printf("running backgroud\n");
+    printf("running backgroud pid: %d\n", getpid());
     
     char* argv[5];
     int argc = 0;
@@ -199,58 +236,57 @@ int trata_comando_background(char **commands, int n_comandos)
 
 }
 
+
 int main()
 {
     /// Define tratamento de sinais ///
-    // struct sigaction tratador_sinais = {.sa_handler = trata_sinal};
-    // sigemptyset(&tratador_sinais.sa_mask);
-    // sigaddset(&tratador_sinais.sa_mask, SIGINT);
-    // sigaddset(&tratador_sinais.sa_mask, SIGQUIT);
-    // sigaddset(&tratador_sinais.sa_mask, SIGTSTP);
-    // sigaction(SIGINT, &tratador_sinais, NULL);
-    // sigaction(SIGQUIT, &tratador_sinais, NULL);
-    // sigaction(SIGTSTP, &tratador_sinais, NULL);
+    struct sigaction tratador_sinais = {.sa_handler = trata_sinal};
+    sigemptyset(&tratador_sinais.sa_mask);
+    sigaddset(&tratador_sinais.sa_mask, SIGINT);
+    sigaddset(&tratador_sinais.sa_mask, SIGQUIT);
+    sigaddset(&tratador_sinais.sa_mask, SIGTSTP);
+    sigaction(SIGINT, &tratador_sinais, NULL);
+    sigaction(SIGQUIT, &tratador_sinais, NULL);
+    sigaction(SIGTSTP, &tratador_sinais, NULL);
     pid_t pid_gerenciador = 1;
     GPID_LIST = malloc(sizeof(List));
     newList(GPID_LIST, sizeof(pid_t), NULL);
     ////
-
-    if(1)
+    while(1)
     {
-        while(1)
+        printf("Sou a main e meu pid é %d\n", getpid());
+        printf(">>> ");
+        char* commands[5];
+        int n_comandos = get_tokenized_command(commands);
+        int background_flag = 0;
+        background_flag = trata_comando_foreground(commands, n_comandos);
+
+        if(background_flag)
         {
-            printf(">>> ");
-            char comando[1000];
-            char* commands[5];
-            int n_comandos = get_tokenized_command(commands);
-            int background_flag = 0;
-            background_flag = trata_comando_foreground(commands, n_comandos);
-
-            if(background_flag)
-            {
-                printf("FLAG: %d\n", background_flag);
-                pid_gerenciador = fork();
-                
-                if (pid_gerenciador == 0)
-                {   
-                    setsid();
-                    printf("id da sessão: %ld", getpid());
-                    trata_comando_background(commands, n_comandos);
-                }
-
-                else if (pid_gerenciador > 0)
-                {
-                    waitpid(pid_gerenciador, NULL, WNOHANG);
-                    addTail(GPID_LIST, &pid_gerenciador);
-                    for(int i = 0; i < n_comandos; i++)
-                    {
-                        free(commands[i]);
-                    }
-                        
-                }
+            printf("FLAG: %d\n", background_flag);
+            pid_gerenciador = fork();
+            
+            if (pid_gerenciador == 0)
+            {   
+                setsid();
+                printf("id da sessão: %d\n", getpid());
+                trata_comando_background(commands, n_comandos);
+                break;
             }
 
-            sleep(1);
+            else if (pid_gerenciador > 0)
+            {
+                waitpid(pid_gerenciador, NULL, WNOHANG);
+                addTail(GPID_LIST, &pid_gerenciador);
+                for(int i = 0; i < n_comandos; i++)
+                {
+                    free(commands[i]);
+                }
+                    
+            }
         }
+
+        sleep(1);
     }
+
 }
