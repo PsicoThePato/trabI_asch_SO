@@ -6,9 +6,14 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <assert.h>
 
 #include "asch.h"
 #include "linkedList.h"
+
+
+List* GPID_LIST;
+
 
 void trata_sinal(int sinal)
 {
@@ -45,71 +50,141 @@ int muda_diretorio(char *path)
     return result;
 }
 
-int trata_comando_foreground(char *comando)
+
+int cria_vetor_comandos(char *comando, char**commands)
 {
-    char *command_token;
-    const char delimiter[] = " ";
-    command_token = strtok(comando, delimiter);
-
-    if (strcmp(command_token, "cd") == 0)
-    {
-        char cwd[1000];
-        command_token = strtok(NULL, delimiter);
-        int result = muda_diretorio(command_token);
-        getcwd(cwd, sizeof(cwd));
-        printf("INFO ---- %d PATH: %s\n", result, cwd);
-        return 0;
+    char* end_str;
+    int n_process = 0;
+    char* command_token = strtok_r(comando, "<3", &end_str);
+    while(command_token != NULL)
+    {   
+        commands[n_process] = strdup(command_token);
+        printf("cria_vetor_comandos(): [%s]\n", commands[n_process]);
+        command_token = strtok_r(NULL, "<3", &end_str);
+        n_process++;
     }
+    return n_process;
+}
 
-    else if (strcmp(command_token, "exit") == 0)
-        exit(1);
 
+int get_tokenized_command(char **commands)
+{
+    char comando[1000];
+    fgets(comando, 1000, stdin);
+    for (char* p = comando; *p != '\0'; p++)
+    {
+        if (*p == '\n') 
+        {
+            *p = '\0';
+            break;
+        }
+    }
+    int n_comandos = cria_vetor_comandos(comando, commands);
+    return n_comandos;
+}
+
+int cria_argv(char *comando, char** argv)
+{
+    char* token = strtok(comando, " ");
+    int argc = 0;
+    while(token != NULL)
+    {
+        argv[argc] = strdup(token);
+        printf("cria_argv() : argv: [%s]\n", argv[argc]);
+        argc++;
+        token = strtok(NULL, " ");
+    }
+    return argc;
+}
+
+
+int trata_comando_foreground(char **comando, int n_commands)
+{
+    printf("running foreground\n");
+
+    if(n_commands == 1)
+    {
+        printf("INFO ---- comando unitário\n");
+        char command[strlen(comando[0]) + 1];
+        strcpy(command, comando[0]);
+        char* argv[5];
+        int argc = cria_argv(command, argv);
+        if (strcmp(argv[0], "cd") == 0)
+        {
+            printf("sorvetinho\n");
+            char cwd[1000];
+            int result = muda_diretorio(argv[1]);
+            getcwd(cwd, sizeof(cwd));
+            printf("foreground : %d PATH: %s\n", result, cwd);
+            return 0;
+        }
+        else if (strcmp(argv[0], "exit") == 0)
+        {
+            printf("Entrando no bloco de exit.\n");
+            Node* node = GPID_LIST->head;
+            while(node)
+            {
+                kill(-1 * (*(int*)(GPID_LIST->head->data)), SIGKILL);
+                node = node->next;
+            }
+            destroyList(GPID_LIST);
+            printf("DESTRUÍ A LISTA BUUM\n");
+            kill(getpid(), SIGKILL);
+            printf("deu ruim no exit\n");
+        }
+        else if(strcmp(argv[argc - 1], "%") == 0)
+        {
+
+            printf("teste\n");
+            argc--;
+            argv[argc] = NULL;
+            pid_t pid = fork();
+            if(pid == 0)
+            {
+            execvp(argv[0], argv);
+            }
+            else
+            {
+                waitpid(pid, NULL, 0);
+                for(int i = 0; i < argc; i++)
+                {
+                    free(argv[i]);
+                }
+                printf("POC\n");
+            }
+
+            return 0;
+        }
+    }
     else
     {
+        printf("será tratado em background\n");
         return 1;
     }
 }
 
-int trata_comando_background(char *comando)
+int trata_comando_background(char **commands, int n_comandos)
 {
-    char *command_token;
-    // List* parsed_commands_list;
-    // List* parsed_command;
-    // if(newList(parsed_commands_list, sizeof(List*), NULL))
-    // if(newList(parsed_command, sizeof(char*), NULL))
+    printf("running backgroud\n");
     
-    char* commands[5];
-    char *end_str;
-    int n_process = 0;
-    command_token = strtok_r(comando, "<3", &end_str);
-    while(command_token != NULL)
-    {   
-        commands[n_process] = strdup(command_token);
-        command_token = strtok_r(NULL, "<3", &end_str);
-        n_process++;
-    }
-   //acima funciona
     char* argv[5];
-    char *argv_token;
     int argc = 0;
-    for(int i = 0; i < n_process; i++)
+    for(int i = 0; i < n_comandos; i++)
     {
-        argc = 0;
-        argv_token = strtok(commands[i], " ");
-        while(argv_token != NULL)
+
+        argc = cria_argv(commands[i], argv);
+        for(int k = 0; k < argc; k++)
         {
-            argv[argc] = strdup(argv_token);
-            printf("INFO ---- ARGV: %s\n", argv[argc]);
-            argv_token = strtok(NULL, " ");
-            argc++;
+            printf("background : ARGV: %s\n", argv[k]);
         }
-        printf("INFO ---- ARGC: %d\n", argc); 
+        printf("INFO --- ARGC: %d\n", argc); 
         argv[argc] = NULL;
         pid_t pid = fork();
         if(pid == 0) execvp(argv[0], argv);
         
         else
         {
+            waitpid(pid, NULL, WNOHANG);
             for(int j = 0; j < argc; j++)
             {
                 free(argv[j]);
@@ -118,6 +193,8 @@ int trata_comando_background(char *comando)
         }
         
     }    
+    pid_t wpid;
+    while ((wpid = wait(NULL)) > 0);
 
 
 }
@@ -134,42 +211,46 @@ int main()
     // sigaction(SIGQUIT, &tratador_sinais, NULL);
     // sigaction(SIGTSTP, &tratador_sinais, NULL);
     pid_t pid_gerenciador = 1;
+    GPID_LIST = malloc(sizeof(List));
+    newList(GPID_LIST, sizeof(pid_t), NULL);
     ////
-    while(1)
+
+    if(1)
     {
-        printf(">>>>  ");
-        char comando[1000];
-        char comando_cpy[1000];
-        fgets(comando, 1000, stdin);
-
-        // refatorar essa merda numa função
-        for (char* p = comando; *p != '\0'; p++)
+        while(1)
         {
-            if (*p == '\n') 
+            printf(">>> ");
+            char comando[1000];
+            char* commands[5];
+            int n_comandos = get_tokenized_command(commands);
+            int background_flag = 0;
+            background_flag = trata_comando_foreground(commands, n_comandos);
+
+            if(background_flag)
             {
-                *p = '\0';
+                printf("FLAG: %d\n", background_flag);
+                pid_gerenciador = fork();
+                
+                if (pid_gerenciador == 0)
+                {   
+                    setsid();
+                    printf("id da sessão: %ld", getpid());
+                    trata_comando_background(commands, n_comandos);
+                }
+
+                else if (pid_gerenciador > 0)
+                {
+                    waitpid(pid_gerenciador, NULL, WNOHANG);
+                    addTail(GPID_LIST, &pid_gerenciador);
+                    for(int i = 0; i < n_comandos; i++)
+                    {
+                        free(commands[i]);
+                    }
+                        
+                }
             }
+
+            sleep(1);
         }
-
-        strcpy(comando_cpy, comando);
-        int background_flag = 0;
-        background_flag = trata_comando_foreground(comando);
-
-        if (background_flag)
-        {
-            pid_gerenciador = fork();
-            
-            if (pid_gerenciador == 0)
-            {   
-                setsid();
-                trata_comando_background(comando_cpy);
-            }
-
-            else if (pid_gerenciador > 0)
-            {
-                waitpid(pid_gerenciador, NULL, WNOHANG);
-            }
-        }
-
     }
 }
