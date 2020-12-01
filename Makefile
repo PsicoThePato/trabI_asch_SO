@@ -1,0 +1,7 @@
+# INTEGRANTES: JAIRO MARCOS OLIVEIRA MOUTINHO, JULIANE FERREIRA AZEREDO, JOANA SANTOS MARTINS
+
+all:
+	gcc src/*.c -o asch -I /headers
+
+run: all
+	./asch
