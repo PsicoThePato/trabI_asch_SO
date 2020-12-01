@@ -12,7 +12,6 @@ int cria_vetor_comandos(char *comando, char**commands)
     while(command_token != NULL)
     {   
         commands[n_process] = strdup(command_token);
-        printf("cria_vetor_comandos(): [%s]\n", commands[n_process]);
         command_token = strtok_r(NULL, "<3", &end_str);
         n_process++;
     }
@@ -29,14 +28,14 @@ int get_tokenized_command(char **commands)
         printf("Problema na leitura do comando, tente de novo!\n");
         return -1;
     }
-    for (char* p = comando; *p != '\0'; p++)
+    for (char* p = comando; *p != '\0'; p++) //remove quebra de linha
     {
         if (*p == '\n') 
         {
             *p = '\0';
             break;
         }
-        if(*p == '\0')
+        if(*p == '\0') // checa integridade da string lida
         {
             printf("Problema na leitura do comando, tente de novo!\n");
             return -1;
@@ -54,7 +53,6 @@ int cria_argv(char *comando, char** argv)
     while(token != NULL)
     {
         argv[argc] = strdup(token);
-        printf("cria_argv() : argv: [%s]\n", argv[argc]);
         argc++;
         token = strtok(NULL, " ");
     }

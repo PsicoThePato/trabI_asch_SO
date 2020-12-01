@@ -6,203 +6,20 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <string.h>
-#include <assert.h>
 
-#include "asch.h"
 #include "linkedList.h"
 #include "strUtils.h"
+#include "procUtils.h"
 
 
-List* GPID_LIST;
-int FG_PROCESS_FLAG = 0;
-pid_t FG_PROCESS_PID;
-
-
-void trata_sinal(int sinal)
-{
-    if(FG_PROCESS_FLAG)
-    {
-        kill(FG_PROCESS_FLAG, SIGKILL);
-    }
-    else
-    {
-        char caractere_chamada;
-        switch (sinal)
-        {
-        case SIGINT:
-            caractere_chamada = 'C';
-            break;
-        case SIGQUIT:
-            caractere_chamada = '\\';
-            break;
-        case SIGTSTP:
-            caractere_chamada = 'Z';
-            break;
-        default:
-            printf("%d", sinal);
-            break;
-        }
-
-        printf("\nNão adianta me enviar o sinal por Ctrl-%c. Estou vacinado!!\n", caractere_chamada);
-    }
-}
-
-
-int muda_diretorio(char *path)
-{
-    if (path == NULL)
-    {
-        printf("CD sem argumentos, nada será feito\n");
-        return -1;
-    }
-    printf("INFO ---- PATH: [%s]\n", path);
-    int result = chdir(path);
-    if(result != 0) perror("chdir error");
-    return result;
-}
-
-
-int trata_comando_foreground(char **comando, int n_commands)
-{
-    printf("running foreground pid: %d\n", getpid());
-    if(n_commands < 0)
-    {
-        return 0;
-    }
-    if(n_commands == 1)
-    {
-        printf("INFO ---- comando unitário\n");
-        char command[strlen(comando[0]) + 1];
-        strcpy(command, comando[0]);
-        char* argv[5];
-        int argc = cria_argv(command, argv);
-        if (strcmp(argv[0], "cd") == 0)
-        {
-            printf("sorvetinho\n");
-            char cwd[1000];
-            int result = muda_diretorio(argv[1]);
-            getcwd(cwd, sizeof(cwd));
-            printf("foreground : %d PATH: %s\n", result, cwd);
-            return 0;
-        }
-        else if (strcmp(argv[0], "exit") == 0)
-        {
-            printf("Entrando no bloco de exit.\n");
-            Node* node = GPID_LIST->head;
-            while(node)
-            {
-                kill(-1 * (*(int*)(GPID_LIST->head->data)), SIGKILL);
-                node = node->next;
-            }
-            destroyList(GPID_LIST);
-            printf("DESTRUÍ A LISTA E TENHO O PID %d\n", getpid());
-            kill(getpid(), SIGKILL);
-            printf("deu ruim no exit\n");
-        }
-        else if(strcmp(argv[argc - 1], "%") == 0)
-        {
-
-            printf("teste\n");
-            argc--;
-            argv[argc] = NULL;
-            pid_t pid = fork();
-            if(pid == 0)
-            {
-                execvp(argv[0], argv);
-                perror("Deu ruim!");
-                return 0; // failsafe
-            }
-            else
-            {
-                FG_PROCESS_PID = pid;
-                FG_PROCESS_FLAG = 1;
-                waitpid(pid, NULL, 0);
-                FG_PROCESS_FLAG = 0;
-                for(int i = 0; i < argc; i++)
-                {
-                    free(argv[i]);
-                }
-                printf("POC\n");
-                return 0;
-            }
-
-        }
-
-        else // comando não termina em '%'
-        {
-            printf("será tratado em background\n");
-            return 1;
-        }
-    }
-    
-    else // mais de um comando
-    {
-        printf("será tratado em background\n");
-        return 1;
-    }
-}
-
-
-int trata_comando_background(char **commands, int n_comandos)
-{
-    printf("running backgroud pid: %d\n", getpid());
-    
-    if(n_comandos == 1)
-    {
-        struct sigaction ignora = {.sa_handler = SIG_IGN};
-        sigemptyset(&ignora.sa_mask);
-        sigaction(SIGUSR1, &ignora, NULL);
-    }
-    kill(getpid(), SIGUSR1);
-    printf("sou imorrível\n");
-    char* argv[6];
-    int argc = 0;
-    pid_t pid;
-    for(int i = 0; i < n_comandos; i++)
-    {
-
-        argc = cria_argv(commands[i], argv);
-        for(int k = 0; k < argc; k++)
-        {
-            printf("background : ARGV: %s\n", argv[k]);
-        }
-        printf("INFO --- ARGC: %d\n", argc); 
-        argv[argc] = "&";
-        argv[argc+1] = NULL;
-        pid = fork();
-        if(pid == 0) execvp(argv[0], argv);
-        
-        else
-        {
-            for(int j = 0; j < argc; j++)
-            {
-                free(argv[j]);
-            }
-            
-        }
-        
-    }
-    //kill(pid, SIGUSR1);
-    //Previne corona de se espalhar. Você não tem uma pandemia se todo mundo está morto.
-    if(pid > 0)
-    {
-        int status;
-        while(wait(&status) > 0)
-        {
-            if(status == SIGUSR1)
-            {
-                kill(-1*getpid(), SIGKILL);
-            }
-        }
-        kill(getpid(), SIGKILL);
-    }
-
-}
+List* GPID_LIST = NULL;     // binding da variável global
+int FG_PROCESS_FLAG = 0;    // binding da variável global
+pid_t FG_PROCESS_PID = 0;   // binding da variável global
 
 
 int main()
 {
-    /// Define tratamento de sinais ///
+    ///------------------- Define tratamento de sinais -------------------------///
     struct sigaction tratador_sinais = {.sa_handler = trata_sinal};
     sigemptyset(&tratador_sinais.sa_mask);
     sigaddset(&tratador_sinais.sa_mask, SIGINT);
@@ -211,14 +28,16 @@ int main()
     sigaction(SIGINT, &tratador_sinais, NULL);
     sigaction(SIGQUIT, &tratador_sinais, NULL);
     sigaction(SIGTSTP, &tratador_sinais, NULL);
+    // ------------------------------------------------------------- ///
     pid_t pid_gerenciador = 1;
-    GPID_LIST = malloc(sizeof(List));
-    newList(GPID_LIST, sizeof(pid_t), NULL);
+    GPID_LIST = malloc(sizeof(List)); // Aloca espaço da lista
+    newList(GPID_LIST, sizeof(pid_t), NULL); // Inicializa lista que guardará pid de sessões
     ////
     while(1)
     {
-        printf("Sou a main e meu pid é %d\n", getpid());
-        printf(">>> ");
+        char cwd[1000];
+        getcwd(cwd, sizeof(cwd));
+        printf("%s >>> ", cwd);
         char* commands[5];
         int n_comandos = get_tokenized_command(commands);
         int background_flag = 0;
@@ -234,22 +53,29 @@ int main()
                 setsid();
                 printf("id da sessão: %d\n", getpid());
                 trata_comando_background(commands, n_comandos);
-                break;
+                break; // para filho não executar fluxo da main
             }
 
+            else if (pid_gerenciador < 0)
+            {
+                perror("Erro no fork do gerenciador!");
+            }
+            
             else if (pid_gerenciador > 0)
             {
+                printf("to na mãe\n");
                 waitpid(pid_gerenciador, NULL, WNOHANG);
-                addTail(GPID_LIST, &pid_gerenciador);
+                printf("esperei\n");
+                addTail(GPID_LIST, &pid_gerenciador); // Adiciona id da sessão à lista encadeada.
                 for(int i = 0; i < n_comandos; i++)
                 {
                     free(commands[i]);
                 }
+                printf("terminei a mãe\n");
                     
             }
         }
 
-        sleep(1);
     }
 
 }
